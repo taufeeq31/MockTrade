@@ -65,3 +65,74 @@ export const buyStock = async (req, res) => {
          });
     }
 };
+
+export const sellStock = async ( req, res ) => {
+    const { symbol, quantity, price } = req.body;
+    const userId = req.userId; // Comes from auth middleware
+
+    if ( !symbol || !quantity || !price ) {
+        return res.status( 400 ).json( { message: 'Symbol, quantity, and price are required.' } );
+    }
+
+    try {
+        // 1. Check if user owns the stock
+        // Ensure userId is passed as an Object, though Mongoose usually handles strings fine.
+        const portfolioItem = await Portfolio.findOne({ 
+            userId: userId, 
+            symbol: symbol 
+        });
+
+        if (!portfolioItem) {
+            return res.status(400).json({ message: 'You do not own this stock' });
+        }
+        
+        if (portfolioItem.quantity < quantity) {
+            return res.status(400).json({ message: `Not enough shares. You have ${portfolioItem.quantity}` });
+        }
+
+        const user = await User.findById( userId );
+        if ( !user ) {
+            return res.status( 404 ).json( { message: 'User not found.' } );
+        }
+
+        const totalSaleValue = price * quantity;
+
+        const profitOrLoss = (price - portfolioItem.averagePrice) * quantity;
+
+        user.walletBalance += totalSaleValue;
+        await user.save();
+
+        portfolioItem.quantity -= quantity;
+
+        // FIX: Use if/else so we don't save a deleted document
+        if (portfolioItem.quantity === 0) {
+            await Portfolio.deleteOne({ _id: portfolioItem._id });
+        } else {
+            await portfolioItem.save();
+        }
+
+        await Transaction.create( {
+            // Log the transaction
+            userId,
+            symbol,
+            type: 'SELL',
+            quantity,
+            price,
+            totalAmount: totalSaleValue,
+        } );
+
+        return res.status( 200 ).json( {
+            message: `Successfully sold ${quantity} shares of ${symbol}`,
+            newBalance: user.walletBalance,
+            profitOrLoss: profitOrLoss,
+            portfolio: portfolioItem.quantity === 0 ? null : portfolioItem,
+        } );
+    } catch (error) {
+        console.log(error);
+        return res.status( 500 ).json({
+            message: 'Selling Failed.',
+            error: error.message,
+        })
+
+    }
+}
