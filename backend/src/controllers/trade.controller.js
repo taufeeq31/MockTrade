@@ -60,7 +60,7 @@ export const buyStock = async (req, res) => {
     } catch (error) {
         console.error('Error processing buy order:', error);
         return res.status(500).json({
-            mesage: 'Buy Failed. Please try again later.',
+            message: 'Buy Failed. Please try again later.',
             error: error.message,
          });
     }
